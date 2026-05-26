@@ -263,7 +263,7 @@ class Translate extends Component
                     Tab::make($locale)
                         ->label($this->getLocaleLabel($locale))
                         ->locale($locale)
-                        ->schema(function () use ($locale) {
+                        ->schema((function () use ($locale) {
                             // Prepare actions for locale
                             $actions = collect($this->getActions())
                                 ->map(fn ($action) => $this->prepareActionForLocale($action, $locale))
@@ -285,7 +285,7 @@ class Translate extends Component
                                     }
                                 )
                                 ->all();
-                        }),
+                        })()),
                 ])
                 ->getClone();
         }
