@@ -1,5 +1,6 @@
 <?php
 
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -9,6 +10,7 @@ use Illuminate\Support\Str;
 use Livewire\Livewire;
 use SolutionForest\FilamentTranslateField\Forms\Component\Translate;
 use SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Post;
+use SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Tag;
 use SolutionForest\FilamentTranslateField\Tests\Stubs\Filament\Pages\TestingEditRecord as EditRecord;
 use SolutionForest\FilamentTranslateField\Tests\Stubs\Filament\Resources\PostResource;
 use SolutionForest\FilamentTranslateField\Tests\Stubs\Filament\Resources\PostResource\Pages\EditPost;
@@ -210,7 +212,7 @@ it('renders tab persistence attributes and supports livewire property', function
 it('syncs an excluded relationship field without leaking it into the model update', function () {
     $post = makePost();
 
-    $tagModel = \SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Tag::class;
+    $tagModel = Tag::class;
     $tags = collect(['one', 'two', 'three'])->map(fn ($name) => $tagModel::create(['name' => $name]));
 
     $selected = [$tags[0]->getKey(), $tags[2]->getKey()];
@@ -227,7 +229,7 @@ it('syncs an excluded relationship field without leaking it into the model updat
                     ->exclude(['tags'])
                     ->schema([
                         TextInput::make('title')->label('Title'),
-                        \Filament\Forms\Components\CheckboxList::make('tags')
+                        CheckboxList::make('tags')
                             ->relationship('tags', 'name'),
                     ]),
             ])->statePath('data');
@@ -289,7 +291,7 @@ it('keeps excluded real-column fields in the saved data', function () {
 it('does not leak an excluded relationship nested inside a layout component', function () {
     $post = makePost();
 
-    $tagModel = \SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Tag::class;
+    $tagModel = Tag::class;
     $tags = collect(['one', 'two', 'three'])->map(fn ($name) => $tagModel::create(['name' => $name]));
     $selected = [$tags[0]->getKey(), $tags[2]->getKey()];
 
@@ -306,7 +308,7 @@ it('does not leak an excluded relationship nested inside a layout component', fu
                     ->schema([
                         Section::make()->schema([
                             TextInput::make('title')->label('Title'),
-                            \Filament\Forms\Components\CheckboxList::make('tags')
+                            CheckboxList::make('tags')
                                 ->relationship('tags', 'name'),
                         ]),
                     ]),
