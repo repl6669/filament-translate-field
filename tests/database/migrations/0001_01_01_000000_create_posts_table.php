@@ -12,6 +12,7 @@ return new class extends Migration
             $table->id();
             $table->json('title')->nullable();
             $table->json('content')->nullable();
+            $table->string('status')->nullable();
             $table->timestamps();
         });
     }

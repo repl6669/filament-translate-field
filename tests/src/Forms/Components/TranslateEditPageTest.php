@@ -206,3 +206,124 @@ it('renders tab persistence attributes and supports livewire property', function
         ->set('activeLocale', 'fr')
         ->assertSet('activeLocale', 'fr');
 });
+
+it('syncs an excluded relationship field without leaking it into the model update', function () {
+    $post = makePost();
+
+    $tagModel = \SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Tag::class;
+    $tags = collect(['one', 'two', 'three'])->map(fn ($name) => $tagModel::create(['name' => $name]));
+
+    $selected = [$tags[0]->getKey(), $tags[2]->getKey()];
+
+    Livewire::test(new class extends EditRecord
+    {
+        protected static string $resource = PostResource::class;
+
+        public function form(Schema $schema): Schema
+        {
+            return $schema->components([
+                Translate::make()
+                    ->locales(['en', 'fr'])
+                    ->exclude(['tags'])
+                    ->schema([
+                        TextInput::make('title')->label('Title'),
+                        \Filament\Forms\Components\CheckboxList::make('tags')
+                            ->relationship('tags', 'name'),
+                    ]),
+            ])->statePath('data');
+        }
+
+        public function render(): View
+        {
+            return view('filament.pages.edit');
+        }
+    }, ['record' => $post->getKey()])
+        ->fillForm(['title' => ['en' => 'A', 'fr' => 'B']])
+        ->set('data.tags', array_map('strval', $selected))
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // Relationship must be synced ...
+    expect($post->fresh()->tags->pluck('id')->sort()->values()->all())
+        ->toEqual(collect($selected)->sort()->values()->all());
+
+    // ... and the relationship key must never be written as a model attribute.
+    expect($post->fresh()->getAttributes())->not->toHaveKey('tags');
+});
+
+it('keeps excluded real-column fields in the saved data', function () {
+    $post = makePost();
+
+    Livewire::test(new class extends EditRecord
+    {
+        protected static string $resource = PostResource::class;
+
+        public function form(Schema $schema): Schema
+        {
+            return $schema->components([
+                Translate::make()
+                    ->locales(['en', 'fr'])
+                    ->exclude(['status'])
+                    ->schema([
+                        TextInput::make('title')->label('Title'),
+                        // Excluded but dehydrated (a real, non-translatable column):
+                        // it must still be written to the model.
+                        TextInput::make('status'),
+                    ]),
+            ])->statePath('data');
+        }
+
+        public function render(): View
+        {
+            return view('filament.pages.edit');
+        }
+    }, ['record' => $post->getKey()])
+        ->fillForm(['title' => ['en' => 'A', 'fr' => 'B']])
+        ->set('data.status', 'published')
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($post->fresh()->status)->toBe('published');
+});
+
+it('does not leak an excluded relationship nested inside a layout component', function () {
+    $post = makePost();
+
+    $tagModel = \SolutionForest\FilamentTranslateField\Tests\Fixtures\Models\Tag::class;
+    $tags = collect(['one', 'two', 'three'])->map(fn ($name) => $tagModel::create(['name' => $name]));
+    $selected = [$tags[0]->getKey(), $tags[2]->getKey()];
+
+    Livewire::test(new class extends EditRecord
+    {
+        protected static string $resource = PostResource::class;
+
+        public function form(Schema $schema): Schema
+        {
+            return $schema->components([
+                Translate::make()
+                    ->locales(['en', 'fr'])
+                    ->exclude(['tags'])
+                    ->schema([
+                        Section::make()->schema([
+                            TextInput::make('title')->label('Title'),
+                            \Filament\Forms\Components\CheckboxList::make('tags')
+                                ->relationship('tags', 'name'),
+                        ]),
+                    ]),
+            ])->statePath('data');
+        }
+
+        public function render(): View
+        {
+            return view('filament.pages.edit');
+        }
+    }, ['record' => $post->getKey()])
+        ->fillForm(['title' => ['en' => 'A', 'fr' => 'B']])
+        ->set('data.tags', array_map('strval', $selected))
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($post->fresh()->tags->pluck('id')->sort()->values()->all())
+        ->toEqual(collect($selected)->sort()->values()->all())
+        ->and($post->fresh()->getAttributes())->not->toHaveKey('tags');
+});

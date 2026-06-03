@@ -12,6 +12,7 @@ use Filament\Schemas\Contracts\HasRenderHookScopes;
 use Filament\Schemas\Schema;
 use Filament\Support\Concerns\CanBeContained;
 use Filament\Support\Concerns\HasExtraAlpineAttributes;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use SolutionForest\FilamentTranslateField\Facades\FilamentTranslateField;
 use SolutionForest\FilamentTranslateField\Forms\Component\Translate\Tab;
@@ -75,6 +76,78 @@ class Translate extends Component
         $this->exclude = $exclude;
 
         return $this;
+    }
+
+    /**
+     * Excluded (non-translatable) fields are rendered once per locale tab, so
+     * several components end up sharing the same state path. When such a field
+     * is not dehydrated (e.g. a relationship or media upload that persists
+     * itself via `saveRelationships()`), Filament's dehydration keeps its raw
+     * value instead of stripping it, because more than one component claims the
+     * path. That leaks the value into the model attributes and triggers
+     * "Unknown column" errors on save.
+     *
+     * After the normal dehydration we therefore remove the state paths of the
+     * excluded fields that explicitly opted out of dehydration. Excluded fields
+     * that map to real columns (`dehydrated(true)`, the default) are left
+     * untouched, and relationships are still synced by `saveRelationships()`.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    public function dehydrateState(array &$state, bool $isDehydrated = true): void
+    {
+        parent::dehydrateState($state, $isDehydrated);
+
+        if (! $isDehydrated) {
+            return;
+        }
+
+        foreach ($this->getExcludedNonDehydratedStatePaths() as $statePath) {
+            Arr::forget($state, $statePath);
+        }
+    }
+
+    /**
+     * Absolute state paths of excluded leaf fields that are not dehydrated.
+     *
+     * @return array<int, string>
+     */
+    protected function getExcludedNonDehydratedStatePaths(): array
+    {
+        $exclude = $this->exclude instanceof Collection
+            ? $this->exclude->all()
+            : (array) $this->evaluate($this->exclude);
+
+        if ($exclude === []) {
+            return [];
+        }
+
+        $statePaths = [];
+
+        $collect = function (Schema $schema) use (&$collect, &$statePaths, $exclude): void {
+            foreach ($schema->getComponents(withHidden: true) as $component) {
+                if (
+                    method_exists($component, 'getName')
+                    && is_string($name = $component->getName())
+                    && in_array($name, $exclude, true)
+                    && method_exists($component, 'isDehydrated')
+                    && ! $component->isDehydrated()
+                    && method_exists($component, 'getStatePath')
+                ) {
+                    $statePaths[$component->getStatePath()] = true;
+                }
+
+                foreach ($component->getChildSchemas(withHidden: true) as $childSchema) {
+                    $collect($childSchema);
+                }
+            }
+        };
+
+        foreach ($this->getChildSchemas(withHidden: true) as $childSchema) {
+            $collect($childSchema);
+        }
+
+        return array_keys($statePaths);
     }
 
     /**
@@ -263,7 +336,7 @@ class Translate extends Component
                     Tab::make($locale)
                         ->label($this->getLocaleLabel($locale))
                         ->locale($locale)
-                        ->schema((function () use ($locale) {
+                        ->schema(function () use ($locale) {
                             // Prepare actions for locale
                             $actions = collect($this->getActions())
                                 ->map(fn ($action) => $this->prepareActionForLocale($action, $locale))
@@ -285,7 +358,7 @@ class Translate extends Component
                                     }
                                 )
                                 ->all();
-                        })()),
+                        }),
                 ])
                 ->getClone();
         }
